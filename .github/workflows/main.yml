@@ -27,11 +27,9 @@ jobs:
           sudo apt-get install -y build-essential ninja-build cmake unixodbc-dev libsqliteodbc libssl-dev libreadline-dev gdb valgrind \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
 
-      - name: Check ARM toolchain
+      - name: Generate ARM toolchain
         run: |
-          which aarch64-linux-gnu-g++
-          aarch64-linux-gnu-g++ --version
-          ls -l /usr/bin/aarch64*
+          cmake -B build/arm64 --toolchain cmake/toolchain-arm64.cmake .
  
       # Runs a set of commands using the runners shell
       - name: Build
@@ -110,6 +108,7 @@ jobs:
       - name: Install dependencies
         id: dependencies
         run: |
+          # OpenSSL
           $openssl_latest_url = "https://slproweb.com/download/Win64OpenSSL_Light-4_0_0.exe"
           $openssl_installer = "$env:TEMP\Win64OpenSSL_Light-4_0_0.exe"
 
@@ -125,6 +124,24 @@ jobs:
               -Wait
 
           Write-Host "Done installing OpenSSL"
+
+          # SQLite ODBC Driver
+          Write-Host "Downloading SQLite ODBC Driver x64..."
+
+          $sqliteInstaller = "$env:TEMP\sqliteodbc_w64.exe"
+
+          (New-Object Net.WebClient).DownloadFile(
+              "http://www.ch-werner.de/sqliteodbc/sqliteodbc_w64.exe",
+              $sqliteInstaller
+          )
+
+          Write-Host "Installing SQLite ODBC Driver..."
+
+          Start-Process $sqliteInstaller `
+              -ArgumentList "/S" `
+              -Wait
+
+          Write-Host "Done installing SQLite ODBC Driver x64"
 
       # Runs a set of commands using the runners shell
       - name: Build
