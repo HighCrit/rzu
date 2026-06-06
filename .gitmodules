@@ -1,7 +1,3 @@
-[submodule "gtest"]
-	path = gtest
-	url = https://github.com/glandu2/gtest
-	branch = master
 [submodule "libiconv"]
 	path = libiconv
 	url = https://github.com/glandu2/libiconv
@@ -18,3 +14,7 @@
 	path = zlib
 	url = https://github.com/glandu2/zlib
 	branch = minimal
+[submodule "gtest"]
+	path = gtest
+	url = https://github.com/google/googletest.git
+	branch = master
