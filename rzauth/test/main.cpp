@@ -20,7 +20,9 @@ int main(int argc, char** argv) {
 		return result;
 
 	if(AuthServer::CONFIG_GET()->doGameReconnectTest.get()) {
-		env->testGameReconnect = true;
+		Environment* env2 = new Environment;
+		::testing::AddGlobalTestEnvironment(env2);
+		env2->testGameReconnect = true;
 		return testRunner.runTests();
 	} else {
 		return result;

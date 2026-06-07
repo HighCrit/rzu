@@ -62,6 +62,25 @@
             "type": "cppvsdbg",
             "request": "attach",
             "processId": "${command:pickProcess}"
+        },
+        {
+            "name": "Debug rzauth Subproject",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build-bin/rzauth_test",
+            "cwd": "${workspaceFolder}/build-bin",
+            "MIMode": "gdb",
+            "stopAtEntry": false,
+            "sourceFileMap": {
+                "/workspaces/rzu": "${workspaceFolder}"
+            },
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ]
         }
     ]
 }
