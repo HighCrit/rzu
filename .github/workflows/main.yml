@@ -462,11 +462,15 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
  
+      - name: Compute lowercase image name
+        id: image_name
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+ 
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          images: ghcr.io/${{ steps.image_name.outputs.owner }}/${{ matrix.image }}
           tags: |
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
@@ -500,7 +504,7 @@ jobs:
       - name: Create and push multi-arch manifest
         run: |
           TAG="${{ steps.meta.outputs.version }}"
-          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}"
+          IMAGE="ghcr.io/${{ steps.image_name.outputs.owner }}/${{ matrix.image }}"
           docker buildx imagetools create -t "${IMAGE}:${TAG}" \
             "${IMAGE}:${TAG}-amd64" \
             "${IMAGE}:${TAG}-arm64"
