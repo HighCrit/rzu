@@ -152,6 +152,7 @@ jobs:
 
       - name: Build (windows amd64)
         run: |
+          mkdir build
           cd build
           cmake .. -DBUILD_SHARED_LIBS=FALSE -DCMAKE_BUILD_TYPE=RelWithDebInfo
           if ($lastexitcode -ne 0) { exit $lastexitcode }
