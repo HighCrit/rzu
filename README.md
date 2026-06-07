@@ -33,14 +33,10 @@ Then (with Visual Studio) :
 ```
 git clone --recursive https://github.com/glandu2/rzu.git
 cd rzu
-
-# AMD64 build
-cmake -B build/amd64 .
-cmake --build build/amd64
-
-# ARM64 build
-cmake -B build/arm64 --toolchain cmake/toolchain-arm64.cmake .
-cmake --build build/arm64
+mkdir build
+cd build
+cmake ..
+cmake --build .
 ```
 
 Then a Visual Studio solution wil be generated in build/ directory.

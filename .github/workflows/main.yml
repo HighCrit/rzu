@@ -11,7 +11,7 @@ jobs:
   build-linux-amd64:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -58,7 +58,7 @@ jobs:
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -103,26 +103,51 @@ jobs:
   build-windows-amd64:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
 
-      - name: Install dependencies
+      - name: Cache OpenSSL installer
+        id: cache-openssl
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\Win64OpenSSL_Light-4_0_0.exe
+          key: openssl-win64-4_0_0
+
+      - name: Download OpenSSL
+        if: steps.cache-openssl.outputs.cache-hit != 'true'
         run: |
-          $openssl_download_page = Invoke-WebRequest "http://slproweb.com/products/Win32OpenSSL.html"
-          $openssl_download_link = Select-String -Pattern '<a href="/download/(Win64OpenSSL-1_[^"]+)"' -InputObject $openssl_download_page
-          $openssl_latest_link = $openssl_download_link.Matches[0].Groups[1].Value
-          $openssl_latest_url = "https://slproweb.com/download/" + $openssl_latest_link
-          Write-Host "Using OpenSSL from $openssl_latest_url"
-          (New-Object Net.WebClient).DownloadFile($openssl_latest_url, $openssl_latest_link)
-          Start-Process $openssl_latest_link -ArgumentList "/silent /verysilent /sp- /suppressmsgboxes" -Wait
+          (New-Object Net.WebClient).DownloadFile(
+            "https://slproweb.com/download/Win64OpenSSL_Light-4_0_0.exe",
+            "$env:RUNNER_TEMP\Win64OpenSSL_Light-4_0_0.exe"
+          )
+
+      - name: Install OpenSSL
+        run: |
+          Start-Process "$env:RUNNER_TEMP\Win64OpenSSL_Light-4_0_0.exe" `
+            -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-" `
+            -Wait
           Write-Host "Done installing OpenSSL"
-          Write-Host "Downloading SQLite ODBC Driver x64..."
-          $exePath = "$($env:TEMP)\sqliteodbc_w64.exe"
-          (New-Object Net.WebClient).DownloadFile('http://www.ch-werner.de/sqliteodbc/sqliteodbc_w64.exe', $exePath)
-          Write-Host "Installing..."
-          cmd /c start /wait $exePath /S
+
+      - name: Cache SQLite ODBC installer
+        id: cache-sqliteodbc
+        uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}\sqliteodbc_w64.exe
+          key: sqliteodbc-w64
+
+      - name: Download SQLite ODBC Driver
+        if: steps.cache-sqliteodbc.outputs.cache-hit != 'true'
+        run: |
+          (New-Object Net.WebClient).DownloadFile(
+            "http://www.ch-werner.de/sqliteodbc/sqliteodbc_w64.exe",
+            "$env:RUNNER_TEMP\sqliteodbc_w64.exe"
+          )
+
+      - name: Install SQLite ODBC Driver
+        run: |
+          Start-Process "$env:RUNNER_TEMP\sqliteodbc_w64.exe" -ArgumentList "/S" -Wait
           Write-Host "Done installing SQLite ODBC Driver x64"
 
       - name: Build (windows amd64)
@@ -155,7 +180,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-linux-amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -175,7 +200,7 @@ jobs:
             valgrind
 
       - name: Download amd64 build tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: build-tree-linux-amd64
           path: .
@@ -210,7 +235,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs: build-linux-arm64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -230,7 +255,7 @@ jobs:
             valgrind
 
       - name: Download arm64 build tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: build-tree-linux-arm64
           path: .
@@ -263,7 +288,7 @@ jobs:
     runs-on: windows-latest
     needs: build-windows-amd64
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           fetch-depth: 0
           submodules: recursive
@@ -276,7 +301,7 @@ jobs:
           Write-Host "Done installing SQLite ODBC Driver x64"
 
       - name: Download windows build tree
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: build-tree-windows-amd64
           path: .
@@ -301,7 +326,7 @@ jobs:
   # Publish (tags only)
   # ---------------------------------------------------------------------------
 
-  publish:
+  publish-binaries:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     needs:
@@ -312,13 +337,139 @@ jobs:
       contents: write
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts
 
       - name: Publish release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/**/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  publish-docker:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - test-linux-amd64
+      - test-linux-arm64
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - image: rzauth
+          - image: rzgamereconnect
+    steps:
+      - uses: actions/checkout@v6
+ 
+      # Download the amd64 and arm64 build trees so we have the zips and
+      # librzu.so for both architectures.
+      - name: Download amd64 build tree
+        uses: actions/download-artifact@v8
+        with:
+          name: build-tree-linux-amd64
+          path: build-tree-amd64
+ 
+      - name: Download arm64 build tree
+        uses: actions/download-artifact@v8
+        with:
+          name: build-tree-linux-arm64
+          path: build-tree-arm64
+ 
+      # Extract the zip for each arch into a staging directory so the
+      # Dockerfile COPY instructions are arch-agnostic.
+      - name: Stage amd64 files
+        run: |
+          mkdir -p stage/amd64
+          ZIP=$(ls build-tree-amd64/build-bin/rzemu-*-Linux-x86_64-${{ matrix.image }}.zip 2>/dev/null ||                ls build-tree-amd64/build-bin/rzemu-*-Linux-amd64-${{ matrix.image }}.zip)
+          unzip -o "$ZIP" -d stage/amd64/
+          cp build-tree-amd64/build-bin/librzu.so stage/amd64/
+ 
+      - name: Stage arm64 files
+        run: |
+          mkdir -p stage/arm64
+          ZIP=$(ls build-tree-arm64/build-bin/rzemu-*-Linux-aarch64-${{ matrix.image }}.zip 2>/dev/null ||                ls build-tree-arm64/build-bin/rzemu-*-Linux-arm64-${{ matrix.image }}.zip)
+          unzip -o "$ZIP" -d stage/arm64/
+          cp build-tree-arm64/build-bin/librzu.so stage/arm64/
+ 
+      # Write a Dockerfile tuned for each image. We use a build arg to select
+      # the staged directory so a single Dockerfile serves both architectures
+      # when built with docker buildx.
+      - name: Write Dockerfile
+        run: |
+          cat > Dockerfile.${{ matrix.image }} << 'DOCKERFILE'
+          FROM alpine:latest
+          RUN apk add --no-cache libstdc++ libssl3 unixodbc psqlodbc
+          ARG STAGED_DIR
+          COPY ${STAGED_DIR}/librzu.so /usr/lib/librzu.so
+          COPY ${STAGED_DIR}/ /opt/${{ matrix.image }}/
+          RUN chmod +x /opt/${{ matrix.image }}/${{ matrix.image }}
+          WORKDIR /opt/${{ matrix.image }}
+          ENTRYPOINT ["/opt/${{ matrix.image }}/${{ matrix.image }}"]
+          DOCKERFILE
+ 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+ 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+ 
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+ 
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+ 
+      # Build and push the amd64 image using the staged amd64 files.
+      - name: Build and push amd64
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.image }}
+          platforms: linux/amd64
+          build-args: STAGED_DIR=stage/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-amd64
+          labels: ${{ steps.meta.outputs.labels }}
+ 
+      # Build and push the arm64 image using the staged arm64 files.
+      - name: Build and push arm64
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: Dockerfile.${{ matrix.image }}
+          platforms: linux/arm64
+          build-args: STAGED_DIR=stage/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}-arm64
+          labels: ${{ steps.meta.outputs.labels }}
+ 
+      # Combine the two single-arch images into a single multi-arch manifest
+      # so users can `docker pull ghcr.io/owner/rzauth:1.2.3` on any platform.
+      - name: Create and push multi-arch manifest
+        run: |
+          TAG="${{ steps.meta.outputs.version }}"
+          IMAGE="ghcr.io/${{ github.repository_owner }}/${{ matrix.image }}"
+          docker buildx imagetools create -t "${IMAGE}:${TAG}" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"
+          # Also tag major.minor if it differs from the full version
+          MINOR_TAG=$(echo "$TAG" | cut -d. -f1,2)
+          if [ "$MINOR_TAG" != "$TAG" ]; then
+            docker buildx imagetools create -t "${IMAGE}:${MINOR_TAG}" \
+              "${IMAGE}:${MINOR_TAG}-amd64" \
+              "${IMAGE}:${MINOR_TAG}-arm64"
+          fi
