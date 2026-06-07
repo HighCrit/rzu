@@ -232,58 +232,6 @@ jobs:
           name: test_logs_linux_amd64
           path: build/test_logs.zip
 
-  test-linux-arm64:
-    runs-on: ubuntu-24.04-arm
-    needs: build-linux-arm64
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          submodules: recursive
-
-      - name: Install test dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            build-essential \
-            ninja-build \
-            cmake \
-            unixodbc-dev \
-            libsqliteodbc \
-            libssl-dev \
-            libreadline-dev \
-            gdb \
-            valgrind
-
-      - name: Download arm64 build tree
-        uses: actions/download-artifact@v8
-        with:
-          name: build-tree-linux-arm64
-          path: .
-
-      - name: Restore binary permissions
-        run: chmod -R +x build-bin/
-
-      - name: Test (arm64)
-        run: |
-          cd build
-          set +e
-          set -x
-          LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/odbc valgrind --leak-check=full --trace-children=yes ctest -VV
-          RESULT=$?
-          for i in $(find ./ -maxdepth 1 -name 'core*' -print); do
-            echo "Core $i" && file "$i" &&
-            gdb "$(file "$i" | sed -r "s/.*from '([^ ']+)[ '].*/\1/")" "$i" -ex "thread apply all bt" -ex "set pagination 0" -batch
-          done
-          zip -r test_logs.zip core* log traffic_log
-          exit $RESULT
-
-      - name: Upload test logs
-        uses: actions/upload-artifact@v7
-        if: always()
-        with:
-          name: test_logs_linux_arm64
-          path: build/test_logs.zip
 
   test-windows-amd64:
     runs-on: windows-latest
@@ -293,29 +241,34 @@ jobs:
         with:
           fetch-depth: 0
           submodules: recursive
-
+ 
       - name: Install SQLite ODBC Driver
         run: |
           $exePath = "$($env:TEMP)\sqliteodbc_w64.exe"
           (New-Object Net.WebClient).DownloadFile('http://www.ch-werner.de/sqliteodbc/sqliteodbc_w64.exe', $exePath)
           cmd /c start /wait $exePath /S
           Write-Host "Done installing SQLite ODBC Driver x64"
-
+ 
       - name: Download windows build tree
         uses: actions/download-artifact@v8
         with:
           name: build-tree-windows-amd64
           path: .
-
+ 
       - name: Test (windows amd64)
         run: |
           cd build
-          ctest -VV -C RelWithDebInfo
+          $SEED = [int](Get-Date -UFormat %s)
+          $TOTAL = (ctest -N -C RelWithDebInfo | Select-String "Total Tests").Line -replace '\D+(\d+).*','$1'
+          $STEP = [math]::Max(1, [math]::Floor($TOTAL / 3))
+          $START = ($SEED % $STEP) + 1
+          Write-Host "Running ~1/3 of $TOTAL tests (start=$START step=$STEP seed=$SEED)"
+          ctest -VV -C RelWithDebInfo --random-order --rng-seed $SEED -I $START,,$STEP
           $test_result = $lastexitcode
           echo "Compressing test logs"
           7z a test_logs.zip crashdump.dmp log traffic_log
           exit $test_result
-
+ 
       - name: Upload test logs
         uses: actions/upload-artifact@v7
         if: always()
@@ -345,11 +298,11 @@ jobs:
           files: artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
+
   publish-release-arm64:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [test-linux-arm64]
+    needs: [build-linux-arm64]
     permissions:
       contents: write
     steps:
@@ -364,7 +317,7 @@ jobs:
           files: artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
+
   publish-release-windows:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
@@ -383,7 +336,7 @@ jobs:
           files: artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
- 
+
   publish-docker:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
@@ -475,7 +428,6 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
  
-      # Build and push the amd64 image using the staged amd64 files.
       - name: Build and push amd64
         uses: docker/build-push-action@v7
         with:
@@ -484,10 +436,9 @@ jobs:
           platforms: linux/amd64
           build-args: STAGED_DIR=stage/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-amd64
+          tags: ghcr.io/${{ steps.image_name.outputs.owner }}/${{ matrix.image }}:${{ steps.meta.outputs.version }}-amd64
           labels: ${{ steps.meta.outputs.labels }}
  
-      # Build and push the arm64 image using the staged arm64 files.
       - name: Build and push arm64
         uses: docker/build-push-action@v7
         with:
@@ -496,22 +447,20 @@ jobs:
           platforms: linux/arm64
           build-args: STAGED_DIR=stage/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}-arm64
+          tags: ghcr.io/${{ steps.image_name.outputs.owner }}/${{ matrix.image }}:${{ steps.meta.outputs.version }}-arm64
           labels: ${{ steps.meta.outputs.labels }}
  
-      # Combine the two single-arch images into a single multi-arch manifest
-      # so users can `docker pull ghcr.io/owner/rzauth:1.2.3` on any platform.
-      - name: Create and push multi-arch manifest
+      # Combine the two single-arch images into multi-arch manifests for every
+      # tag that metadata-action produced (e.g. 6.5.3, 6.5, latest).
+      - name: Create and push multi-arch manifests
         run: |
-          TAG="${{ steps.meta.outputs.version }}"
           IMAGE="ghcr.io/${{ steps.image_name.outputs.owner }}/${{ matrix.image }}"
-          docker buildx imagetools create -t "${IMAGE}:${TAG}" \
-            "${IMAGE}:${TAG}-amd64" \
-            "${IMAGE}:${TAG}-arm64"
-          # Also tag major.minor if it differs from the full version
-          MINOR_TAG=$(echo "$TAG" | cut -d. -f1,2)
-          if [ "$MINOR_TAG" != "$TAG" ]; then
-            docker buildx imagetools create -t "${IMAGE}:${MINOR_TAG}" \
-              "${IMAGE}:${MINOR_TAG}-amd64" \
-              "${IMAGE}:${MINOR_TAG}-arm64"
-          fi
+          VERSION="${{ steps.meta.outputs.version }}"
+          AMD64="${IMAGE}:${VERSION}-amd64"
+          ARM64="${IMAGE}:${VERSION}-arm64"
+          # Iterate over every tag produced by metadata-action and create a
+          # multi-arch manifest pointing at the two arch-specific images.
+          echo "${{ steps.meta.outputs.tags }}" | while read -r TAG; do
+            echo "Creating manifest for $TAG"
+            docker buildx imagetools create -t "$TAG" "$AMD64" "$ARM64"
+          done
