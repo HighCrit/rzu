@@ -26,10 +26,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential ninja-build cmake unixodbc-dev libsqliteodbc libssl-dev libreadline-dev gdb valgrind \
             gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu
-
-      - name: Generate ARM toolchain
-        run: |
-          cmake -B build/arm64 -DARM64_TOOLCHAIN_PREFIX=aarch64-linux-gnu- .
  
       # Runs a set of commands using the runners shell
       - name: Build
