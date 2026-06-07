@@ -16,62 +16,6 @@ set(CMAKE_VERBOSE_MAKEFILE false CACHE BOOL "Print compilation commands")
 set(CMAKE_BUILD_TYPE "Debug" CACHE STRING "Build type (one of Debug, Release, RelWithDebInfo, MinSizeRel)")
 set(BUILD_SHARED_LIBS ON CACHE BOOL "Build shared libs instead of static")
 
-# ---------------------------------------------------------------------------
-# Architecture selection
-# ---------------------------------------------------------------------------
-# Configure once for a single target architecture.
-#
-# AMD64 (default — native host build, no extra flags needed):
-#   cmake -B build-amd64 ..
-#
-# ARM64 (Linux cross-compilation):
-#   cmake -B build-arm64 --toolchain cmake/toolchain-arm64.cmake ..
-#   (the toolchain file is auto-generated into cmake/ on first run)
-#
-# ARM64 (macOS):
-#   cmake -B build-arm64 -DCMAKE_OSX_ARCHITECTURES=arm64 ..
-#
-# ARM64 (MSVC):
-#   cmake -B build-arm64 -G "Visual Studio 17 2022" -A arm64 ..
-# ---------------------------------------------------------------------------
-
-set(ARM64_TOOLCHAIN_PREFIX "aarch64-linux-gnu-" CACHE STRING
-    "Cross-compiler prefix used when generating cmake/toolchain-arm64.cmake")
-set(ARM64_SYSROOT "" CACHE PATH
-    "Sysroot written into the generated toolchain file (leave empty for none)")
-
-# Auto-generate cmake/toolchain-arm64.cmake so developers don't need to write
-# it by hand. Re-run cmake after changing ARM64_TOOLCHAIN_PREFIX or ARM64_SYSROOT.
-set(_toolchain_out "${CMAKE_CURRENT_SOURCE_DIR}/cmake/toolchain-arm64.cmake")
-if(NOT EXISTS "${_toolchain_out}")
-  message(STATUS "Generating ARM64 toolchain file: ${_toolchain_out}")
-  if(ARM64_SYSROOT)
-    set(_sysroot_line "set(CMAKE_SYSROOT \"${ARM64_SYSROOT}\")")
-  else()
-    set(_sysroot_line "")
-  endif()
-  file(WRITE "${_toolchain_out}"
-"set(CMAKE_SYSTEM_NAME Linux)
-set(CMAKE_SYSTEM_PROCESSOR aarch64)
-
-set(CMAKE_C_COMPILER   ${ARM64_TOOLCHAIN_PREFIX}gcc)
-set(CMAKE_CXX_COMPILER ${ARM64_TOOLCHAIN_PREFIX}g++)
-${_sysroot_line}
-set(CMAKE_C_FLAGS_INIT   "-march=armv8-a")
-set(CMAKE_CXX_FLAGS_INIT "-march=armv8-a")
-
-# Only search the target sysroot for libraries/headers, never the host paths
-set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
-")
-endif()
-
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)$")
-  message(STATUS "ARM64 build active (toolchain: ${CMAKE_TOOLCHAIN_FILE})")
-endif()
-# ---------------------------------------------------------------------------
 
 # Packaging
 find_package(Git QUIET)
@@ -183,7 +127,6 @@ set(HTTP_ONLY ON)
 set(CMAKE_USE_OPENSSL ON)
 set(BUILD_CURL_EXE OFF)
 set(BUILD_TESTING OFF)
-set(ENABLE_THREADED_RESOLVER OFF)
 FetchContent_GetProperties(curl)
 if(NOT curl_POPULATED)
   FetchContent_Populate(curl)

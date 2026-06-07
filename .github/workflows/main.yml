@@ -48,19 +48,18 @@ jobs:
         run: |
           ulimit -c unlimited
           sudo sh -c 'echo "core.%e.%p.%s.%t" > /proc/sys/kernel/core_pattern'
-          mkdir -p build/amd64
-          cd build/amd64
-          cmake ../.. -GNinja \
+          mkdir -p build
+          cd build
+          cmake .. -GNinja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DBUILD_SHARED_LIBS=FALSE \
-            -DRZU_BUILD_DIR_NAME=$GITHUB_WORKSPACE/build/amd64-bin
+            -DBUILD_SHARED_LIBS=FALSE
           cmake --build . --target package --config RelWithDebInfo
 
       - name: Upload amd64 binaries
         uses: actions/upload-artifact@v4
         with:
           name: rzu-linux-amd64
-          path: build/amd64-bin/*.zip
+          path: build/*.zip
 
   build-linux-arm64:
     runs-on: ubuntu-24.04-arm
@@ -97,18 +96,17 @@ jobs:
       - name: Build (arm64)
         run: |
           mkdir -p build/arm64
-          cd build/arm64
-          cmake ../.. -GNinja \
+          cd build
+          cmake .. -GNinja \
             -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-            -DBUILD_SHARED_LIBS=FALSE \
-            -DRZU_BUILD_DIR_NAME=$GITHUB_WORKSPACE/build/arm64-bin
+            -DBUILD_SHARED_LIBS=FALSE
           cmake --build . --target package --config RelWithDebInfo
 
       - name: Upload arm64 binaries
         uses: actions/upload-artifact@v4
         with:
           name: rzu-linux-arm64
-          path: build/arm64-bin/*.zip
+          path: build/*.zip
 
   build-windows-amd64:
     runs-on: windows-latest
@@ -182,7 +180,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: rzu-windows-amd64
-          path: build-bin/*.zip
+          path: build/*.zip
 
   # ---------------------------------------------------------------------------
   # Tests
@@ -221,7 +219,7 @@ jobs:
         run: |
           ulimit -c unlimited
           sudo sh -c 'echo "core.%e.%p.%s.%t" > /proc/sys/kernel/core_pattern'
-          cd build/amd64
+          cd build
           set +e
           set -x
           LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/odbc valgrind --leak-check=full --trace-children=yes ctest -VV
@@ -271,7 +269,7 @@ jobs:
 
       - name: Test (arm64)
         run: |
-          cd build/arm64
+          cd build
           set +e
           set -x
           LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/odbc valgrind --leak-check=full --trace-children=yes ctest -VV
