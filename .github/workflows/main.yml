@@ -258,12 +258,13 @@ jobs:
       - name: Test (windows amd64)
         run: |
           cd build
-          $SEED = [int](Get-Date -UFormat %s)
-          $TOTAL = (ctest -N -C RelWithDebInfo | Select-String "Total Tests").Line -replace '\D+(\d+).*','$1'
-          $STEP = [math]::Max(1, [math]::Floor($TOTAL / 3))
-          $START = ($SEED % $STEP) + 1
-          Write-Host "Running ~1/3 of $TOTAL tests (start=$START step=$STEP seed=$SEED)"
-          ctest -VV -C RelWithDebInfo --random-order --rng-seed $SEED -I "$START,,$STEP"
+          # Get the full list of test names, shuffle them, and pick ~1/3.
+          $tests = (ctest -N -C RelWithDebInfo | Select-String "Test #\d+:" | ForEach-Object { ($_ -replace '.*Test #\d+: (.+)', '$1').Trim() })
+          $shuffled = $tests | Sort-Object { Get-Random }
+          $subset = $shuffled | Select-Object -First ([math]::Max(1, [math]::Ceiling($shuffled.Count / 3)))
+          $pattern = ($subset -join "|")
+          Write-Host "Running $($subset.Count) of $($tests.Count) tests"
+          ctest -VV -C RelWithDebInfo --schedule-random -R $pattern
           $test_result = $lastexitcode
           echo "Compressing test logs"
           7z a test_logs.zip crashdump.dmp log traffic_log
