@@ -42,7 +42,7 @@ jobs:
           cmake --build . --target package --config RelWithDebInfo
 
       - name: Upload amd64 build tree
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-tree-linux-amd64
           path: |
@@ -50,7 +50,7 @@ jobs:
             build-bin/
 
       - name: Upload amd64 packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rzu-linux-amd64
           path: build/*.zip
@@ -87,7 +87,7 @@ jobs:
           cmake --build . --target package --config RelWithDebInfo
 
       - name: Upload arm64 build tree
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-tree-linux-arm64
           path: |
@@ -95,7 +95,7 @@ jobs:
             build-bin/
 
       - name: Upload arm64 packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rzu-linux-arm64
           path: build/*.zip
@@ -110,7 +110,7 @@ jobs:
 
       - name: Cache OpenSSL installer
         id: cache-openssl
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}\Win64OpenSSL_Light-4_0_0.exe
           key: openssl-win64-4_0_0
@@ -132,7 +132,7 @@ jobs:
 
       - name: Cache SQLite ODBC installer
         id: cache-sqliteodbc
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ${{ runner.temp }}\sqliteodbc_w64.exe
           key: sqliteodbc-w64
@@ -160,7 +160,7 @@ jobs:
           if ($lastexitcode -ne 0) { exit $lastexitcode }
 
       - name: Upload windows build tree
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: build-tree-windows-amd64
           path: |
@@ -168,7 +168,7 @@ jobs:
             build-bin/
 
       - name: Upload windows packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rzu-windows-amd64
           path: build/*.zip
@@ -226,7 +226,7 @@ jobs:
           exit $RESULT
 
       - name: Upload test logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test_logs_linux_amd64
@@ -279,7 +279,7 @@ jobs:
           exit $RESULT
 
       - name: Upload test logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test_logs_linux_arm64
@@ -317,7 +317,7 @@ jobs:
           exit $test_result
 
       - name: Upload test logs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test_logs_windows_amd64
@@ -327,34 +327,69 @@ jobs:
   # Publish (tags only)
   # ---------------------------------------------------------------------------
 
-  publish-binaries:
+  publish-release-amd64:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
-    needs:
-      - test-linux-amd64
-      - test-linux-arm64
-      - test-windows-amd64
+    needs: [test-linux-amd64]
     permissions:
       contents: write
     steps:
-      - name: Download all artifacts
+      - name: Download amd64 packages
         uses: actions/download-artifact@v8
         with:
+          name: rzu-linux-amd64
           path: artifacts
-
-      - name: Publish release
+      - name: Publish amd64 binaries
         uses: softprops/action-gh-release@v3
         with:
-          files: artifacts/**/*.zip
+          files: artifacts/*.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
+ 
+  publish-release-arm64:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test-linux-arm64]
+    permissions:
+      contents: write
+    steps:
+      - name: Download arm64 packages
+        uses: actions/download-artifact@v8
+        with:
+          name: rzu-linux-arm64
+          path: artifacts
+      - name: Publish arm64 binaries
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
+  publish-release-windows:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [test-windows-amd64]
+    permissions:
+      contents: write
+    steps:
+      - name: Download windows packages
+        uses: actions/download-artifact@v8
+        with:
+          name: rzu-windows-amd64
+          path: artifacts
+      - name: Publish windows binaries
+        uses: softprops/action-gh-release@v3
+        with:
+          files: artifacts/*.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+ 
   publish-docker:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     needs:
-      - test-linux-amd64
-      - test-linux-arm64
+      - publish-release-amd64
+      - publish-release-arm64
     permissions:
       contents: read
       packages: write
@@ -385,14 +420,16 @@ jobs:
       - name: Stage amd64 files
         run: |
           mkdir -p stage/amd64
-          ZIP=$(ls build-tree-amd64/build-bin/rzemu-*-Linux-x86_64-${{ matrix.image }}.zip 2>/dev/null ||                ls build-tree-amd64/build-bin/rzemu-*-Linux-amd64-${{ matrix.image }}.zip)
+          ZIP=$(find build-tree-amd64/build/ -name "rzemu-*-Linux-*-${{ matrix.image }}.zip" | head -1)
+          echo "Using zip: $ZIP"
           unzip -o "$ZIP" -d stage/amd64/
           cp build-tree-amd64/build-bin/librzu.so stage/amd64/
  
       - name: Stage arm64 files
         run: |
           mkdir -p stage/arm64
-          ZIP=$(ls build-tree-arm64/build-bin/rzemu-*-Linux-aarch64-${{ matrix.image }}.zip 2>/dev/null ||                ls build-tree-arm64/build-bin/rzemu-*-Linux-arm64-${{ matrix.image }}.zip)
+          ZIP=$(find build-tree-arm64/build/ -name "rzemu-*-Linux-*-${{ matrix.image }}.zip" | head -1)
+          echo "Using zip: $ZIP"
           unzip -o "$ZIP" -d stage/arm64/
           cp build-tree-arm64/build-bin/librzu.so stage/arm64/
  
