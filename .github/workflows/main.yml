@@ -352,6 +352,7 @@ jobs:
         include:
           - image: rzauth
           - image: rzgamereconnect
+          - image: rzlog
     steps:
       - uses: actions/checkout@v6
  
