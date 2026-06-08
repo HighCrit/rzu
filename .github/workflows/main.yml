@@ -393,8 +393,14 @@ jobs:
       - name: Write Dockerfile
         run: |
           cat > Dockerfile.${{ matrix.image }} << 'DOCKERFILE'
-          FROM alpine:latest
-          RUN apk add --no-cache libstdc++ libssl3 unixodbc psqlodbc
+          FROM debian:bookworm-slim
+          RUN apt-get update && \
+              apt-get install -y --no-install-recommends \
+                  libstdc++6 \
+                  libssl3 \
+                  unixodbc \
+                  odbc-postgresql \
+              && rm -rf /var/lib/apt/lists/*
           ARG STAGED_DIR
           COPY ${STAGED_DIR}/librzu.so /usr/lib/librzu.so
           COPY ${STAGED_DIR}/ /opt/${{ matrix.image }}/
@@ -422,7 +428,7 @@ jobs:
  
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ steps.image_name.outputs.owner }}/${{ matrix.image }}
           tags: |
