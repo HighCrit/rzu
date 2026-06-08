@@ -394,7 +394,7 @@ jobs:
       - name: Write Dockerfile
         run: |
           cat > Dockerfile.${{ matrix.image }} << 'DOCKERFILE'
-          FROM debian:bookworm-slim
+          FROM ubuntu:24.04
           RUN apt-get update && \
               apt-get install -y --no-install-recommends \
                   libstdc++6 \
