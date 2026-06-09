@@ -400,7 +400,7 @@ jobs:
                   libstdc++6 \
                   libssl3 \
                   unixodbc \
-                  tdsodbc \
+                  odbc-postgresql \
               && rm -rf /var/lib/apt/lists/*
           ARG STAGED_DIR
           COPY ${STAGED_DIR}/librzu.so /usr/lib/librzu.so
